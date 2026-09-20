@@ -1,0 +1,108 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f7fb;
+}
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.login-container {
+    width: 450px;
+    text-align: center;
+}
+
+.login-container h1 {
+    color: #1d4ed8;
+}
+
+.login-box {
+    background-color: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    text-align: left;
+}
+
+.login-box h2 {
+    text-align: center;
+}
+
+#loginMessage {
+    text-align: center;
+    margin-top: 15px;
+}
+
+/* Dashboard */
+
+.dashboard {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: 230px;
+    background-color: #1e293b;
+    padding: 20px;
+    color: white;
+}
+
+.sidebar h2 {
+    margin-bottom: 30px;
+}
+
+.sidebar a {
+    display: block;
+    color: white;
+    text-decoration: none;
+    padding: 10px;
+    margin-bottom: 5px;
+    border-radius: 5px;
+}
+
+.sidebar a:hover {
+    background-color: #334155;
+}
+
+.sidebar .logout {
+    margin-top: 30px;
+    background-color: #dc2626;
+}
+
+.main-content {
+    flex: 1;
+    background-color: #f4f7fb;
+}
+
+.topbar {
+    background-color: white;
+    padding: 20px;
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+}
+
+.dashboard-card {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-card h5 {
+    color: #6b7280;
+}
+
+.dashboard-card h2 {
+    color: #1d4ed8;
+}
+
+.dashboard-section {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+}
