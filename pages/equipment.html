@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IEMRS - Equipment Management</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Shared Stylesheet -->
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+
+    <div class="dashboard">
+
+        <!-- Unified Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                <h2>IEMRS</h2>
+                <span class="brand-sub">Control Center</span>
+            </div>
+
+            <div class="sidebar-nav">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="equipment.html" class="active">Equipment</a>
+                <a href="maintenance.html">Maintenance</a>
+                <a href="workorders.html">Work Orders</a>
+                <a href="workforce.html">Workforce</a>
+                <a href="inventory.html">Inventory</a>
+                <a href="analytics.html">Analytics</a>
+            </div>
+
+            <div class="sidebar-footer">
+                <a href="../index.html" class="logout" id="logoutBtn">Logout</a>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+
+            <!-- Consistent Topbar -->
+            <div class="topbar">
+                <div class="topbar-left">
+                    <h3>Equipment Management</h3>
+                    <p class="topbar-subtitle">Industrial machinery catalog, physical location & status tracking</p>
+                </div>
+                <div class="topbar-right">
+                    <span class="role-badge">
+                        <span class="status-indicator-dot"></span>
+                        <span class="topbar-role">Administrator</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Page Body -->
+            <div class="page-container">
+
+                <!-- Summary Statistic Cards -->
+                <div class="row g-3 mb-4">
+                    <div class="col-xl-3 col-sm-6">
+                        <div class="dashboard-card card-blue">
+                            <h5>Total Registered</h5>
+                            <h2 id="kpiTotal">0</h2>
+                            <span class="card-hint">Total assets in registry</span>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-sm-6">
+                        <div class="dashboard-card card-green">
+                            <h5>Operational</h5>
+                            <h2 id="kpiOperational">0</h2>
+                            <span class="card-hint text-success">Active & producing</span>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-sm-6">
+                        <div class="dashboard-card card-amber">
+                            <h5>In Maintenance</h5>
+                            <h2 id="kpiMaintenance">0</h2>
+                            <span class="card-hint text-warning">Under inspection</span>
+                        </div>
+                    </div>
+                    <div class="col-xl-3 col-sm-6">
+                        <div class="dashboard-card card-red">
+                            <h5>Faulty / Down</h5>
+                            <h2 id="kpiFaulty">0</h2>
+                            <span class="card-hint text-danger">Requires immediate service</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Toolbar: Search, Filter, Add Button -->
+                <div class="action-toolbar">
+                    <div class="search-filter-group">
+                        <input type="text" id="searchInput" class="search-input" placeholder="Search by ID, Name, Type, or Location...">
+                        <select id="statusFilter" class="filter-select">
+                            <option value="All">All Status</option>
+                            <option value="Operational">Operational</option>
+                            <option value="Maintenance">Maintenance</option>
+                            <option value="Faulty">Faulty</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#equipmentModal" id="addNewEquipmentBtn">
+                            + Add Equipment
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Main Section: Equipment Table -->
+                <div class="dashboard-section">
+                    <div class="section-header">
+                        <h4>Industrial Machinery Registry</h4>
+                        <span class="badge bg-light text-secondary border" id="recordsCount">0 Records</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Equipment ID</th>
+                                    <th>Equipment Name</th>
+                                    <th>Type</th>
+                                    <th>Location</th>
+                                    <th>Status</th>
+                                    <th>Last Maintenance</th>
+                                    <th>Next Maintenance</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="equipmentTableBody">
+                                <!-- Populated dynamically by equipment.js -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Empty State for Searches / No Data -->
+                    <div id="equipmentEmptyState" class="empty-state d-none">
+                        <div class="empty-state-icon">⚙️</div>
+                        <h5>No Equipment Found</h5>
+                        <p>No machinery matches your search query or filter criteria. Try resetting filters.</p>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Add / Edit Equipment Modal -->
+    <div class="modal fade" id="equipmentModal" tabindex="-1" aria-labelledby="equipmentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="equipmentModalLabel">Add New Equipment</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="equipmentForm">
+                        <input type="hidden" id="editIndex" value="-1">
+
+                        <div class="mb-3">
+                            <label for="eqId" class="form-label fw-bold">Equipment ID *</label>
+                            <input type="text" class="form-control" id="eqId" placeholder="e.g. EQ008" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="eqName" class="form-label fw-bold">Equipment Name *</label>
+                            <input type="text" class="form-control" id="eqName" placeholder="e.g. CNC Milling Center 02" required>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label for="eqType" class="form-label fw-bold">Machinery Type *</label>
+                                <select class="form-select" id="eqType" required>
+                                    <option value="">Select Type</option>
+                                    <option value="CNC Machine">CNC Machine</option>
+                                    <option value="Hydraulic Press">Hydraulic Press</option>
+                                    <option value="Compressor">Compressor</option>
+                                    <option value="Lathe">Lathe Machine</option>
+                                    <option value="Pump">Industrial Pump</option>
+                                    <option value="Conveyor">Conveyor Belt</option>
+                                    <option value="Generator">Generator</option>
+                                    <option value="Drill">Drilling Machine</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="eqLocation" class="form-label fw-bold">Facility Location *</label>
+                                <input type="text" class="form-control" id="eqLocation" placeholder="e.g. Workshop B" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="eqStatus" class="form-label fw-bold">Current Status *</label>
+                            <select class="form-select" id="eqStatus" required>
+                                <option value="Operational">Operational</option>
+                                <option value="Maintenance">Maintenance</option>
+                                <option value="Faulty">Faulty</option>
+                            </select>
+                        </div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-md-6">
+                                <label for="eqLastMaint" class="form-label fw-bold">Last Maintenance *</label>
+                                <input type="date" class="form-control" id="eqLastMaint" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="eqNextMaint" class="form-label fw-bold">Next Maintenance *</label>
+                                <input type="date" class="form-control" id="eqNextMaint" required>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer px-0 pb-0">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="saveEquipmentBtn">Save Record</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 Bundle JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Shared Utility Script -->
+    <script src="../js/common.js"></script>
+    <!-- Page Logic Script -->
+    <script src="../js/equipment.js"></script>
+
+</body>
+
+</html>
