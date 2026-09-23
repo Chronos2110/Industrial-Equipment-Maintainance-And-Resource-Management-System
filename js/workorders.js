@@ -1,15 +1,20 @@
 // ==========================================================================
-// IEMRS - Work Orders JavaScript (js/workorders.js)
-// CRUD, Priority & Status Filtering, and localStorage Persistence
+// FORGE - Work Orders JavaScript (js/workorders.js)
+// Lifecycle: Scheduled -> Assigned -> In Progress -> Waiting for Parts -> Completed / Cancelled
+// Auto-Assign, Equipment Sync, Spare Parts Deduction & Rescheduling
 // ==========================================================================
 
 let ordersList = [];
 let orderModalInstance = null;
+let rescheduleModalInstance = null;
 
 document.addEventListener("DOMContentLoaded", function () {
-    // 1. Initialize modal instance
+    // 1. Initialize modal instances
     let modalEl = document.getElementById("workOrderModal");
     orderModalInstance = new bootstrap.Modal(modalEl);
+
+    let reschedEl = document.getElementById("rescheduleModal");
+    rescheduleModalInstance = new bootstrap.Modal(reschedEl);
 
     // 2. Load data
     loadWorkOrdersData();
@@ -24,6 +29,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 5. Form submit
     document.getElementById("workOrderForm").addEventListener("submit", handleFormSubmit);
+
+    // 6. Reschedule form submit
+    document.getElementById("rescheduleForm").addEventListener("submit", handleRescheduleSubmit);
+
+    // 7. Auto-Assign button
+    document.getElementById("btnAutoAssignWO").addEventListener("click", triggerAutoAssign);
+
+    // 8. Part selection stock notice
+    document.getElementById("orderRequiredPart").addEventListener("change", updatePartAvailabilityNotice);
+    document.getElementById("orderRequiredQty").addEventListener("input", updatePartAvailabilityNotice);
 });
 
 // Load records from localStorage
@@ -36,25 +51,120 @@ function loadWorkOrdersData() {
     }
     filterAndRenderTable();
     updateKpiCards();
+    populateFormDropdowns();
 }
 
 // Update summary metric cards
 function updateKpiCards() {
     let total = ordersList.length;
-    let high = 0;
     let inProgress = 0;
+    let waiting = 0;
     let completed = 0;
 
     for (let i = 0; i < ordersList.length; i++) {
-        if (ordersList[i].priority === "High") high++;
-        if (ordersList[i].status === "In Progress") inProgress++;
-        if (ordersList[i].status === "Completed") completed++;
+        let st = ordersList[i].status;
+        if (st === "In Progress") inProgress++;
+        else if (st === "Waiting for Parts") waiting++;
+        else if (st === "Completed") completed++;
     }
 
     document.getElementById("kpiTotalOrders").textContent = total;
-    document.getElementById("kpiHighPriority").textContent = high;
     document.getElementById("kpiInProgressOrders").textContent = inProgress;
+    document.getElementById("kpiWaitingParts").textContent = waiting;
     document.getElementById("kpiCompletedOrders").textContent = completed;
+}
+
+// Populate Equipment, Technician & Inventory dropdowns
+function populateFormDropdowns() {
+    let equipmentList = JSON.parse(localStorage.getItem("iemrs_equipment")) || [];
+    let eqSelect = document.getElementById("orderEquipment");
+    if (eqSelect) {
+        eqSelect.innerHTML = '<option value="">-- Select Target Equipment --</option>';
+        equipmentList.forEach(function (eq) {
+            let opt = document.createElement("option");
+            opt.value = eq.name;
+            opt.textContent = eq.name + " (" + eq.type + " - " + eq.location + ")";
+            opt.dataset.type = eq.type;
+            eqSelect.appendChild(opt);
+        });
+    }
+
+    let workforce = JSON.parse(localStorage.getItem("iemrs_workforce")) || [];
+    let techSelect = document.getElementById("orderTechnician");
+    if (techSelect) {
+        techSelect.innerHTML = '<option value="">-- Select or Auto-Assign Technician --</option>';
+        workforce.forEach(function (t) {
+            let activeOrders = calculateActiveWorkload(t.name);
+            let opt = document.createElement("option");
+            opt.value = t.name;
+            opt.textContent = t.name + " [" + t.skill + "] (" + activeOrders + " Active Orders)";
+            techSelect.appendChild(opt);
+        });
+    }
+
+    let inventory = JSON.parse(localStorage.getItem("iemrs_inventory")) || [];
+    let partSelect = document.getElementById("orderRequiredPart");
+    if (partSelect) {
+        partSelect.innerHTML = '<option value="">-- No Spare Part Required --</option>';
+        inventory.forEach(function (p) {
+            let opt = document.createElement("option");
+            opt.value = p.name;
+            opt.textContent = p.name + " [Stock: " + p.quantity + " units]";
+            opt.dataset.quantity = p.quantity;
+            partSelect.appendChild(opt);
+        });
+    }
+}
+
+// Trigger Auto-Assign via explainable algorithm
+function triggerAutoAssign() {
+    let eqSelect = document.getElementById("orderEquipment");
+    let selectedEqName = eqSelect.value;
+    let selectedOption = eqSelect.options[eqSelect.selectedIndex];
+    let eqType = selectedOption ? selectedOption.dataset.type : "";
+
+    let result = autoAssignTechnician(eqType || selectedEqName);
+    let feedback = document.getElementById("autoAssignFeedback");
+
+    if (result.technician) {
+        document.getElementById("orderTechnician").value = result.name;
+        feedback.textContent = "⚡ " + result.message;
+        feedback.className = "text-success d-block mt-1 font-weight-bold";
+        showAlert("Assigned to " + result.name + " based on workload and skills.", "info");
+    } else {
+        feedback.textContent = "⚠️ " + result.message;
+        feedback.className = "text-danger d-block mt-1";
+    }
+}
+
+// Check real-time stock when part is selected in modal
+function updatePartAvailabilityNotice() {
+    let partName = document.getElementById("orderRequiredPart").value;
+    let qty = parseInt(document.getElementById("orderRequiredQty").value) || 0;
+    let notice = document.getElementById("partAvailabilityNotice");
+
+    if (!partName || qty <= 0) {
+        notice.textContent = "";
+        return;
+    }
+
+    let inventory = JSON.parse(localStorage.getItem("iemrs_inventory")) || [];
+    let found = inventory.find(p => p.name === partName);
+
+    if (found) {
+        if (found.quantity >= qty) {
+            notice.innerHTML = "<span class='text-success fw-bold'>✔ In Stock:</span> " + found.quantity + " available (Sufficient for this order)";
+        } else {
+            notice.innerHTML = "<span class='text-danger fw-bold'>⚠️ Insufficient Stock:</span> Only " + found.quantity + " in warehouse. Order can be moved to 'Waiting for Parts'.";
+            // Pre-fill waiting reason if empty
+            let reasonInput = document.getElementById("orderWaitingReason");
+            if (!reasonInput.value) {
+                reasonInput.value = partName + " stock insufficient (needed: " + qty + ", available: " + found.quantity + ")";
+            }
+        }
+    } else {
+        notice.textContent = "";
+    }
 }
 
 // Filter and render table rows
@@ -94,36 +204,76 @@ function filterAndRenderTable() {
 
     emptyState.classList.add("d-none");
 
+    let inventory = JSON.parse(localStorage.getItem("iemrs_inventory")) || [];
+
     for (let j = 0; j < filtered.length; j++) {
         let o = filtered[j];
         let tr = document.createElement("tr");
 
+        // Priority Badge Class
         let priorityBadgeClass = "badge-low";
         if (o.priority === "High") priorityBadgeClass = "badge-high";
         else if (o.priority === "Medium") priorityBadgeClass = "badge-medium";
 
-        let statusBadgeClass = "badge-open";
+        // Status Badge Class
+        let statusBadgeClass = "badge-scheduled";
         if (o.status === "Assigned") statusBadgeClass = "badge-assigned";
         else if (o.status === "In Progress") statusBadgeClass = "badge-in-progress";
+        else if (o.status === "Waiting for Parts") statusBadgeClass = "badge-waiting";
         else if (o.status === "Completed") statusBadgeClass = "badge-completed";
+        else if (o.status === "Cancelled") statusBadgeClass = "badge-cancelled";
+
+        // Check if waiting order now has restocked parts
+        let readyToResumeBadge = "";
+        let isWaiting = o.status === "Waiting for Parts";
+        if (isWaiting && o.requiredPart) {
+            let partObj = inventory.find(p => p.name === o.requiredPart);
+            if (partObj && partObj.quantity >= (o.requiredQuantity || 1)) {
+                readyToResumeBadge = "<br><span class='badge-ready-resume mt-1 d-inline-block'>Parts Restocked: Ready to Resume</span>";
+            }
+        }
+
+        // Details snippet: problem, spare parts, waiting reason
+        let detailsHtml = "<div>" + escapeHTML(o.problem) + "</div>";
+        if (o.requiredPart && o.requiredQuantity > 0) {
+            detailsHtml += "<small class='text-muted d-block mt-1'>🔩 Required: <strong>" + escapeHTML(o.requiredPart) + "</strong> (" + o.requiredQuantity + " pcs)</small>";
+        }
+        if (isWaiting && o.waitingReason) {
+            detailsHtml += "<small class='text-danger d-block mt-1'><strong>Hold Reason:</strong> " + escapeHTML(o.waitingReason) + (o.expectedResumeDate ? " | Resume: " + o.expectedResumeDate : "") + "</small>";
+        }
+
+        // Date snippet with rescheduling note
+        let dateHtml = "<div>" + escapeHTML(o.date) + "</div>";
+        if (o.originalDate && o.originalDate !== o.date) {
+            dateHtml += "<span class='badge-rescheduled d-inline-block mt-1' title='Reason: " + escapeHTML(o.rescheduleReason) + "'>Orig: " + escapeHTML(o.originalDate) + "</span>";
+        }
+
+        // Action buttons
+        let actionsHtml = "<div class='btn-action-group justify-content-center'>";
+        if (isWaiting) {
+            actionsHtml += "<button type='button' class='btn-action-resume' onclick='resumeWorkOrder(\"" + escapeHTML(o.id) + "\")'>Resume</button>";
+        }
+        actionsHtml += "<button type='button' class='btn-action-edit' onclick='editOrder(\"" + escapeHTML(o.id) + "\")'>Edit</button>";
+        if (o.status !== "Completed" && o.status !== "Cancelled") {
+            actionsHtml += "<button type='button' class='btn-action-reschedule' onclick='openRescheduleModal(\"" + escapeHTML(o.id) + "\")'>Reschedule</button>";
+        }
+        actionsHtml += "<button type='button' class='btn-action-delete' onclick='deleteOrder(\"" + escapeHTML(o.id) + "\")'>Delete</button>";
+        actionsHtml += "</div>";
 
         tr.innerHTML =
-            "<td><strong>" + o.id + "</strong></td>" +
-            "<td>" + o.equipment + "</td>" +
-            "<td>" + o.problem + "</td>" +
-            "<td>" + o.technician + "</td>" +
-            "<td><span class='badge-status " + priorityBadgeClass + "'>" + o.priority + "</span></td>" +
-            "<td>" + o.date + "</td>" +
-            "<td><span class='badge-status " + statusBadgeClass + "'>" + o.status + "</span></td>" +
-            "<td class='text-center'>" +
-            "  <div class='btn-action-group justify-content-center'>" +
-            "    <button type='button' class='btn-action-edit' onclick='editOrder(\"" + o.id + "\")'>Edit</button>" +
-            "    <button type='button' class='btn-action-delete' onclick='deleteOrder(\"" + o.id + "\")'>Delete</button>" +
-            "  </div>" +
-            "</td>";
+            "<td><strong>" + escapeHTML(o.id) + "</strong></td>" +
+            "<td><strong>" + escapeHTML(o.equipment) + "</strong></td>" +
+            "<td>" + detailsHtml + "</td>" +
+            "<td>" + escapeHTML(o.technician) + "</td>" +
+            "<td><span class='badge-status " + priorityBadgeClass + "'>" + escapeHTML(o.priority) + "</span></td>" +
+            "<td>" + dateHtml + "</td>" +
+            "<td><span class='badge-status " + statusBadgeClass + "'>" + escapeHTML(o.status) + "</span>" + readyToResumeBadge + "</td>" +
+            "<td class='text-center'>" + actionsHtml + "</td>";
 
         tbody.appendChild(tr);
     }
+
+    applyRolePermissions();
 }
 
 // Reset form for new order
@@ -132,9 +282,13 @@ function resetForm() {
     document.getElementById("editIndex").value = "-1";
     document.getElementById("orderId").removeAttribute("readonly");
     document.getElementById("orderModalLabel").textContent = "Create Work Order";
+    document.getElementById("autoAssignFeedback").textContent = "";
+    document.getElementById("partAvailabilityNotice").textContent = "";
+    document.getElementById("orderDate").value = new Date().toISOString().split("T")[0];
+    populateFormDropdowns();
 }
 
-// Form Submit Handler
+// Form Submit Handler (Add or Edit)
 function handleFormSubmit(event) {
     event.preventDefault();
 
@@ -147,13 +301,24 @@ function handleFormSubmit(event) {
     let date = document.getElementById("orderDate").value;
     let status = document.getElementById("orderStatus").value;
 
+    let requiredPart = document.getElementById("orderRequiredPart").value.trim();
+    let requiredQuantity = parseInt(document.getElementById("orderRequiredQty").value) || 0;
+    let waitingReason = document.getElementById("orderWaitingReason").value.trim();
+    let expectedResumeDate = document.getElementById("orderExpectedResume").value;
+    let waitingNotes = document.getElementById("orderWaitingNotes").value.trim();
+
     if (!id || !equipment || !problem || !technician || !priority || !date || !status) {
-        showAlert("Please fill in all fields.", "danger");
+        showAlert("Please fill in all required fields.", "danger");
         return;
     }
 
+    // If status is Waiting for Parts, require a reason
+    if (status === "Waiting for Parts" && !waitingReason) {
+        waitingReason = "Awaiting required spare part or replacement components";
+    }
+
     if (editIndexVal === -1) {
-        // Add new
+        // Add new: verify unique ID
         for (let i = 0; i < ordersList.length; i++) {
             if (ordersList[i].id.toUpperCase() === id.toUpperCase()) {
                 showAlert("Work Order ID already exists. Please choose a unique ID.", "danger");
@@ -168,22 +333,47 @@ function handleFormSubmit(event) {
             technician: technician,
             priority: priority,
             date: date,
-            status: status
+            status: status,
+            requiredPart: requiredPart,
+            requiredQuantity: requiredQuantity,
+            waitingReason: waitingReason,
+            expectedResumeDate: expectedResumeDate,
+            waitingNotes: waitingNotes,
+            originalDate: date,
+            rescheduledDate: "",
+            rescheduleReason: ""
         };
 
         ordersList.unshift(newOrder);
         showAlert("Work order " + id + " created successfully.", "success");
+        logActivity(equipment, "Work order " + id + " created (" + priority + " Priority, assigned to " + technician + ")", "badge-scheduled");
     } else {
         // Edit existing
         if (editIndexVal >= 0 && editIndexVal < ordersList.length) {
-            ordersList[editIndexVal].equipment = equipment;
-            ordersList[editIndexVal].problem = problem;
-            ordersList[editIndexVal].technician = technician;
-            ordersList[editIndexVal].priority = priority;
-            ordersList[editIndexVal].date = date;
-            ordersList[editIndexVal].status = status;
+            let oldOrder = ordersList[editIndexVal];
+            oldOrder.equipment = equipment;
+            oldOrder.problem = problem;
+            oldOrder.technician = technician;
+            oldOrder.priority = priority;
+            oldOrder.date = date;
+            oldOrder.status = status;
+            oldOrder.requiredPart = requiredPart;
+            oldOrder.requiredQuantity = requiredQuantity;
+            oldOrder.waitingReason = waitingReason;
+            oldOrder.expectedResumeDate = expectedResumeDate;
+            oldOrder.waitingNotes = waitingNotes;
+
             showAlert("Work order " + id + " updated.", "success");
+            logActivity(equipment, "Work order " + id + " updated to status '" + status + "'", status === "Waiting for Parts" ? "badge-waiting" : "badge-in-progress");
         }
+    }
+
+    // Crucial Loop: Synchronize machine status in iemrs_equipment
+    syncEquipmentStatusOnWorkOrder(equipment, status, date);
+
+    // If Completed, consume spare parts from inventory if available
+    if (status === "Completed" && requiredPart && requiredQuantity > 0) {
+        consumeSpareParts(requiredPart, requiredQuantity, id);
     }
 
     localStorage.setItem("iemrs_workorders", JSON.stringify(ordersList));
@@ -205,6 +395,8 @@ function editOrder(id) {
 
     if (index === -1) return;
 
+    populateFormDropdowns();
+
     let o = ordersList[index];
 
     document.getElementById("editIndex").value = index;
@@ -217,8 +409,98 @@ function editOrder(id) {
     document.getElementById("orderDate").value = o.date;
     document.getElementById("orderStatus").value = o.status;
 
+    document.getElementById("orderRequiredPart").value = o.requiredPart || "";
+    document.getElementById("orderRequiredQty").value = o.requiredQuantity || 0;
+    document.getElementById("orderWaitingReason").value = o.waitingReason || "";
+    document.getElementById("orderExpectedResume").value = o.expectedResumeDate || "";
+    document.getElementById("orderWaitingNotes").value = o.waitingNotes || "";
+
     document.getElementById("orderModalLabel").textContent = "Edit Work Order (" + o.id + ")";
+    updatePartAvailabilityNotice();
     orderModalInstance.show();
+}
+
+// Resume Work Order manually (Waiting for Parts -> In Progress)
+function resumeWorkOrder(id) {
+    let order = ordersList.find(o => o.id === id);
+    if (!order) return;
+
+    order.status = "In Progress";
+    order.waitingReason = "";
+    localStorage.setItem("iemrs_workorders", JSON.stringify(ordersList));
+
+    syncEquipmentStatusOnWorkOrder(order.equipment, "In Progress");
+    logActivity(order.equipment, "Work order " + id + " resumed (Waiting for Parts -> In Progress)", "badge-in-progress");
+
+    showAlert("Work order " + id + " resumed to In Progress.", "success");
+    filterAndRenderTable();
+    updateKpiCards();
+}
+
+// Reschedule Modal Operations
+function openRescheduleModal(id) {
+    let order = ordersList.find(o => o.id === id);
+    if (!order) return;
+
+    document.getElementById("rescheduleOrderId").value = order.id;
+    document.getElementById("rescheduleOrderDisplay").value = order.id + " - " + order.equipment;
+    document.getElementById("rescheduleOriginalDate").value = order.originalDate || order.date;
+    document.getElementById("rescheduleNewDate").value = "";
+    document.getElementById("rescheduleReason").value = "";
+
+    rescheduleModalInstance.show();
+}
+
+function handleRescheduleSubmit(event) {
+    event.preventDefault();
+
+    let id = document.getElementById("rescheduleOrderId").value;
+    let newDate = document.getElementById("rescheduleNewDate").value;
+    let reason = document.getElementById("rescheduleReason").value.trim();
+
+    if (!newDate || !reason) {
+        showAlert("Please specify both new date and reason.", "danger");
+        return;
+    }
+
+    let order = ordersList.find(o => o.id === id);
+    if (!order) return;
+
+    if (!order.originalDate) {
+        order.originalDate = order.date;
+    }
+    order.date = newDate;
+    order.rescheduledDate = newDate;
+    order.rescheduleReason = reason;
+
+    localStorage.setItem("iemrs_workorders", JSON.stringify(ordersList));
+
+    rescheduleModalInstance.hide();
+    showAlert("Work order " + id + " rescheduled to " + newDate + ".", "info");
+    logActivity(order.equipment, "Work order " + id + " rescheduled to " + newDate + " (Reason: " + reason + ")", "badge-scheduled");
+
+    filterAndRenderTable();
+}
+
+// Consume spare parts from inventory upon Work Order completion
+function consumeSpareParts(partName, quantity, orderId) {
+    let inventory = JSON.parse(localStorage.getItem("iemrs_inventory")) || [];
+    let partIndex = inventory.findIndex(p => p.name === partName);
+
+    if (partIndex !== -1) {
+        let part = inventory[partIndex];
+        let currentQty = parseInt(part.quantity) || 0;
+        let deductQty = Math.min(currentQty, quantity);
+        part.quantity = Math.max(0, currentQty - deductQty);
+
+        localStorage.setItem("iemrs_inventory", JSON.stringify(inventory));
+        logActivity(part.name, "Consumed " + deductQty + " units for Work Order " + orderId, "badge-maintenance");
+
+        // If stock level dropped below minStock, log warning
+        if (part.quantity <= part.minStock) {
+            logActivity(part.name, "Stock alert: only " + part.quantity + " left after WO-" + orderId + " repair", "badge-faulty");
+        }
+    }
 }
 
 // Delete Order
@@ -226,15 +508,13 @@ function deleteOrder(id) {
     let confirmed = confirm("Are you sure you want to delete work order [" + id + "]?");
     if (!confirmed) return;
 
-    let newArr = [];
-    for (let i = 0; i < ordersList.length; i++) {
-        if (ordersList[i].id !== id) {
-            newArr.push(ordersList[i]);
-        }
-    }
-
-    ordersList = newArr;
+    let target = ordersList.find(o => o.id === id);
+    ordersList = ordersList.filter(o => o.id !== id);
     localStorage.setItem("iemrs_workorders", JSON.stringify(ordersList));
+
+    if (target) {
+        logActivity(target.equipment, "Work order " + id + " deleted from records", "badge-faulty");
+    }
 
     showAlert("Work order " + id + " deleted.", "danger");
     filterAndRenderTable();

@@ -1,15 +1,20 @@
 // ==========================================================================
-// IEMRS - Maintenance Management JavaScript (js/maintenance.js)
-// Simple CRUD, Filtering, Scheduling, and localStorage Persistence
+// FORGE - Maintenance Management JavaScript (js/maintenance.js)
+// Lifecycle: Scheduled -> Assigned -> In Progress -> Waiting for Parts -> Completed / Cancelled
+// Auto-Assign, Equipment Sync, Work Order Generation & Rescheduling
 // ==========================================================================
 
 let maintenanceList = [];
 let maintenanceModalInstance = null;
+let maintRescheduleModalInstance = null;
 
 document.addEventListener("DOMContentLoaded", function () {
-    // 1. Initialize modal instance
+    // 1. Initialize modal instances
     let modalElement = document.getElementById("maintenanceModal");
     maintenanceModalInstance = new bootstrap.Modal(modalElement);
+
+    let reschedEl = document.getElementById("maintRescheduleModal");
+    maintRescheduleModalInstance = new bootstrap.Modal(reschedEl);
 
     // 2. Load data from localStorage
     loadMaintenanceData();
@@ -24,6 +29,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // 5. Bind form submit
     document.getElementById("maintenanceForm").addEventListener("submit", handleFormSubmit);
+
+    // 6. Reschedule form submit
+    document.getElementById("maintRescheduleForm").addEventListener("submit", handleRescheduleSubmit);
+
+    // 7. Auto-Assign button
+    document.getElementById("btnAutoAssignMaint").addEventListener("click", triggerAutoAssign);
 });
 
 // Load records from localStorage
@@ -36,6 +47,7 @@ function loadMaintenanceData() {
     }
     filterAndRenderTable();
     updateKpiCards();
+    populateFormDropdowns();
 }
 
 // Update summary metric cards
@@ -47,8 +59,8 @@ function updateKpiCards() {
 
     for (let i = 0; i < maintenanceList.length; i++) {
         let st = maintenanceList[i].status;
-        if (st === "Scheduled") scheduled++;
-        else if (st === "In Progress") inProgress++;
+        if (st === "Scheduled" || st === "Assigned") scheduled++;
+        else if (st === "In Progress" || st === "Waiting for Parts") inProgress++;
         else if (st === "Completed") completed++;
     }
 
@@ -56,6 +68,56 @@ function updateKpiCards() {
     document.getElementById("kpiScheduled").textContent = scheduled;
     document.getElementById("kpiInProgress").textContent = inProgress;
     document.getElementById("kpiCompleted").textContent = completed;
+}
+
+// Populate Equipment & Technician dropdowns
+function populateFormDropdowns() {
+    let equipmentList = JSON.parse(localStorage.getItem("iemrs_equipment")) || [];
+    let eqSelect = document.getElementById("maintEquipment");
+    if (eqSelect) {
+        eqSelect.innerHTML = '<option value="">-- Select Target Equipment --</option>';
+        equipmentList.forEach(function (eq) {
+            let opt = document.createElement("option");
+            opt.value = eq.name;
+            opt.textContent = eq.name + " (" + eq.type + " - " + eq.location + ")";
+            opt.dataset.type = eq.type;
+            eqSelect.appendChild(opt);
+        });
+    }
+
+    let workforce = JSON.parse(localStorage.getItem("iemrs_workforce")) || [];
+    let techSelect = document.getElementById("maintTechnician");
+    if (techSelect) {
+        techSelect.innerHTML = '<option value="">-- Select or Auto-Assign Technician --</option>';
+        workforce.forEach(function (t) {
+            let activeOrders = calculateActiveWorkload(t.name);
+            let opt = document.createElement("option");
+            opt.value = t.name;
+            opt.textContent = t.name + " [" + t.skill + "] (" + activeOrders + " Active Orders)";
+            techSelect.appendChild(opt);
+        });
+    }
+}
+
+// Trigger Auto-Assign via explainable algorithm
+function triggerAutoAssign() {
+    let eqSelect = document.getElementById("maintEquipment");
+    let selectedEqName = eqSelect.value;
+    let selectedOption = eqSelect.options[eqSelect.selectedIndex];
+    let eqType = selectedOption ? selectedOption.dataset.type : "";
+
+    let result = autoAssignTechnician(eqType || selectedEqName);
+    let feedback = document.getElementById("maintAutoAssignFeedback");
+
+    if (result.technician) {
+        document.getElementById("maintTechnician").value = result.name;
+        feedback.textContent = "⚡ " + result.message;
+        feedback.className = "text-success d-block mt-1 font-weight-bold";
+        showAlert("Assigned to " + result.name + " based on workload and skills.", "info");
+    } else {
+        feedback.textContent = "⚠️ " + result.message;
+        feedback.className = "text-danger d-block mt-1";
+    }
 }
 
 // Filter and render table rows
@@ -101,26 +163,49 @@ function filterAndRenderTable() {
         let typeBadgeClass = m.type === "Preventive" ? "badge-preventive" : "badge-corrective";
 
         let statusBadgeClass = "badge-scheduled";
-        if (m.status === "In Progress") statusBadgeClass = "badge-in-progress";
+        if (m.status === "Assigned") statusBadgeClass = "badge-assigned";
+        else if (m.status === "In Progress") statusBadgeClass = "badge-in-progress";
+        else if (m.status === "Waiting for Parts") statusBadgeClass = "badge-waiting";
         else if (m.status === "Completed") statusBadgeClass = "badge-completed";
         else if (m.status === "Cancelled") statusBadgeClass = "badge-cancelled";
 
+        // Date snippet with rescheduling note
+        let dateHtml = "<div>" + escapeHTML(m.scheduledDate) + "</div>";
+        if (m.originalDate && m.originalDate !== m.scheduledDate) {
+            dateHtml += "<span class='badge-rescheduled d-inline-block mt-1' title='Reason: " + escapeHTML(m.rescheduleReason) + "'>Orig: " + escapeHTML(m.originalDate) + "</span>";
+        }
+
+        // Linked Work Order badge if created
+        let woBadge = "";
+        if (m.workOrderId) {
+            woBadge = "<br><small class='text-muted'>Linked: <a href='workorders.html' class='text-primary fw-bold'>" + escapeHTML(m.workOrderId) + "</a></small>";
+        }
+
+        // Action buttons
+        let actionsHtml = "<div class='btn-action-group justify-content-center'>";
+        if (!m.workOrderId && m.status !== "Completed" && m.status !== "Cancelled") {
+            actionsHtml += "<button type='button' class='btn-action-order' onclick='generateWorkOrderFromMaint(\"" + escapeHTML(m.id) + "\")'>+ Work Order</button>";
+        }
+        actionsHtml += "<button type='button' class='btn-action-edit' onclick='editMaintenance(\"" + escapeHTML(m.id) + "\")'>Edit</button>";
+        if (m.status !== "Completed" && m.status !== "Cancelled") {
+            actionsHtml += "<button type='button' class='btn-action-reschedule' onclick='openRescheduleModal(\"" + escapeHTML(m.id) + "\")'>Reschedule</button>";
+        }
+        actionsHtml += "<button type='button' class='btn-action-delete' onclick='deleteMaintenance(\"" + escapeHTML(m.id) + "\")'>Delete</button>";
+        actionsHtml += "</div>";
+
         tr.innerHTML =
-            "<td><strong>" + m.id + "</strong></td>" +
-            "<td>" + m.equipment + "</td>" +
-            "<td><span class='badge-status " + typeBadgeClass + "'>" + m.type + "</span></td>" +
-            "<td>" + m.technician + "</td>" +
-            "<td>" + m.scheduledDate + "</td>" +
-            "<td><span class='badge-status " + statusBadgeClass + "'>" + m.status + "</span></td>" +
-            "<td class='text-center'>" +
-            "  <div class='btn-action-group justify-content-center'>" +
-            "    <button type='button' class='btn-action-edit' onclick='editMaintenance(\"" + m.id + "\")'>Edit</button>" +
-            "    <button type='button' class='btn-action-delete' onclick='deleteMaintenance(\"" + m.id + "\")'>Delete</button>" +
-            "  </div>" +
-            "</td>";
+            "<td><strong>" + escapeHTML(m.id) + "</strong>" + woBadge + "</td>" +
+            "<td><strong>" + escapeHTML(m.equipment) + "</strong></td>" +
+            "<td><span class='badge-status " + typeBadgeClass + "'>" + escapeHTML(m.type) + "</span></td>" +
+            "<td>" + escapeHTML(m.technician) + "</td>" +
+            "<td>" + dateHtml + "</td>" +
+            "<td><span class='badge-status " + statusBadgeClass + "'>" + escapeHTML(m.status) + "</span></td>" +
+            "<td class='text-center'>" + actionsHtml + "</td>";
 
         tbody.appendChild(tr);
     }
+
+    applyRolePermissions();
 }
 
 // Reset form for new schedule
@@ -129,6 +214,9 @@ function resetForm() {
     document.getElementById("editIndex").value = "-1";
     document.getElementById("maintId").removeAttribute("readonly");
     document.getElementById("maintModalLabel").textContent = "Schedule Maintenance";
+    document.getElementById("maintAutoAssignFeedback").textContent = "";
+    document.getElementById("maintDate").value = new Date().toISOString().split("T")[0];
+    populateFormDropdowns();
 }
 
 // Form Submit Handler
@@ -163,26 +251,80 @@ function handleFormSubmit(event) {
             type: type,
             technician: technician,
             scheduledDate: scheduledDate,
-            status: status
+            status: status,
+            originalDate: scheduledDate,
+            rescheduledDate: "",
+            rescheduleReason: "",
+            workOrderId: ""
         };
 
         maintenanceList.unshift(newMaint);
         showAlert("Maintenance task " + id + " scheduled successfully.", "success");
+        logActivity(equipment, "Maintenance task " + id + " scheduled (" + type + ", tech: " + technician + ")", "badge-scheduled");
     } else {
         // Edit existing
         if (editIndexVal >= 0 && editIndexVal < maintenanceList.length) {
-            maintenanceList[editIndexVal].equipment = equipment;
-            maintenanceList[editIndexVal].type = type;
-            maintenanceList[editIndexVal].technician = technician;
-            maintenanceList[editIndexVal].scheduledDate = scheduledDate;
-            maintenanceList[editIndexVal].status = status;
+            let oldM = maintenanceList[editIndexVal];
+            oldM.equipment = equipment;
+            oldM.type = type;
+            oldM.technician = technician;
+            oldM.scheduledDate = scheduledDate;
+            oldM.status = status;
             showAlert("Maintenance task " + id + " updated.", "success");
+            logActivity(equipment, "Maintenance task " + id + " updated to status '" + status + "'", "badge-in-progress");
         }
     }
+
+    // Crucial loop: sync equipment status
+    syncEquipmentStatusOnWorkOrder(equipment, status, scheduledDate);
 
     localStorage.setItem("iemrs_maintenance", JSON.stringify(maintenanceList));
 
     maintenanceModalInstance.hide();
+    filterAndRenderTable();
+    updateKpiCards();
+}
+
+// Generate an actionable Work Order from a Maintenance Schedule
+function generateWorkOrderFromMaint(id) {
+    let maint = maintenanceList.find(m => m.id === id);
+    if (!maint) return;
+
+    let workorders = JSON.parse(localStorage.getItem("iemrs_workorders")) || [];
+    let newOrderId = "WO-" + (300 + workorders.length + 1);
+
+    let priority = maint.type === "Corrective" ? "High" : "Medium";
+    let problemDesc = maint.type + " maintenance protocol: full system inspection and diagnostics on " + maint.equipment;
+
+    let newOrder = {
+        id: newOrderId,
+        equipment: maint.equipment,
+        problem: problemDesc,
+        technician: maint.technician,
+        priority: priority,
+        date: maint.scheduledDate,
+        status: "Assigned",
+        requiredPart: "",
+        requiredQuantity: 0,
+        waitingReason: "",
+        expectedResumeDate: "",
+        waitingNotes: "",
+        originalDate: maint.scheduledDate,
+        rescheduledDate: "",
+        rescheduleReason: "",
+        maintenanceId: maint.id
+    };
+
+    workorders.unshift(newOrder);
+    localStorage.setItem("iemrs_workorders", JSON.stringify(workorders));
+
+    maint.workOrderId = newOrderId;
+    maint.status = "Assigned";
+    localStorage.setItem("iemrs_maintenance", JSON.stringify(maintenanceList));
+
+    logActivity(maint.equipment, "Generated work order " + newOrderId + " from maintenance schedule " + id, "badge-assigned");
+    showAlert("Created Work Order " + newOrderId + " assigned to " + maint.technician + ".", "success");
+
     filterAndRenderTable();
     updateKpiCards();
 }
@@ -199,6 +341,8 @@ function editMaintenance(id) {
 
     if (index === -1) return;
 
+    populateFormDropdowns();
+
     let m = maintenanceList[index];
 
     document.getElementById("editIndex").value = index;
@@ -214,20 +358,63 @@ function editMaintenance(id) {
     maintenanceModalInstance.show();
 }
 
+// Reschedule Modal
+function openRescheduleModal(id) {
+    let maint = maintenanceList.find(m => m.id === id);
+    if (!maint) return;
+
+    document.getElementById("rescheduleMaintId").value = maint.id;
+    document.getElementById("rescheduleMaintDisplay").value = maint.id + " - " + maint.equipment;
+    document.getElementById("rescheduleMaintOriginalDate").value = maint.originalDate || maint.scheduledDate;
+    document.getElementById("rescheduleMaintNewDate").value = "";
+    document.getElementById("rescheduleMaintReason").value = "";
+
+    maintRescheduleModalInstance.show();
+}
+
+function handleRescheduleSubmit(event) {
+    event.preventDefault();
+
+    let id = document.getElementById("rescheduleMaintId").value;
+    let newDate = document.getElementById("rescheduleMaintNewDate").value;
+    let reason = document.getElementById("rescheduleMaintReason").value.trim();
+
+    if (!newDate || !reason) {
+        showAlert("Please specify both new date and reason.", "danger");
+        return;
+    }
+
+    let maint = maintenanceList.find(m => m.id === id);
+    if (!maint) return;
+
+    if (!maint.originalDate) {
+        maint.originalDate = maint.scheduledDate;
+    }
+    maint.scheduledDate = newDate;
+    maint.rescheduledDate = newDate;
+    maint.rescheduleReason = reason;
+
+    localStorage.setItem("iemrs_maintenance", JSON.stringify(maintenanceList));
+
+    maintRescheduleModalInstance.hide();
+    showAlert("Maintenance task " + id + " rescheduled to " + newDate + ".", "info");
+    logActivity(maint.equipment, "Maintenance " + id + " rescheduled to " + newDate + " (Reason: " + reason + ")", "badge-scheduled");
+
+    filterAndRenderTable();
+}
+
 // Delete Record
 function deleteMaintenance(id) {
     let confirmed = confirm("Are you sure you want to delete maintenance schedule [" + id + "]?");
     if (!confirmed) return;
 
-    let newArr = [];
-    for (let i = 0; i < maintenanceList.length; i++) {
-        if (maintenanceList[i].id !== id) {
-            newArr.push(maintenanceList[i]);
-        }
-    }
-
-    maintenanceList = newArr;
+    let target = maintenanceList.find(m => m.id === id);
+    maintenanceList = maintenanceList.filter(m => m.id !== id);
     localStorage.setItem("iemrs_maintenance", JSON.stringify(maintenanceList));
+
+    if (target) {
+        logActivity(target.equipment, "Maintenance schedule " + id + " removed", "badge-faulty");
+    }
 
     showAlert("Maintenance record " + id + " removed.", "danger");
     filterAndRenderTable();

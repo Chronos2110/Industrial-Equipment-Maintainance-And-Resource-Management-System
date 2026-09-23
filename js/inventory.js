@@ -1,6 +1,6 @@
 // ==========================================================================
-// IEMRS - Inventory & Spare Parts JavaScript (js/inventory.js)
-// Stock Level Evaluation, Category Filtering, and localStorage Persistence (SDG 12)
+// FORGE - Inventory & Spare Parts JavaScript (js/inventory.js)
+// Stock Level Evaluation, Category Filtering, and Waiting Parts Integration
 // ==========================================================================
 
 let inventoryList = [];
@@ -17,6 +17,10 @@ document.addEventListener("DOMContentLoaded", function () {
     // 3. Bind search and filter events
     document.getElementById("searchInput").addEventListener("input", filterAndRenderTable);
     document.getElementById("categoryFilter").addEventListener("change", filterAndRenderTable);
+    let statusFilterEl = document.getElementById("statusFilter");
+    if (statusFilterEl) {
+        statusFilterEl.addEventListener("change", filterAndRenderTable);
+    }
 
     // 4. Add button click
     document.getElementById("addNewPartBtn").addEventListener("click", resetForm);
@@ -66,6 +70,8 @@ function updateKpiCards() {
 function filterAndRenderTable() {
     let query = document.getElementById("searchInput").value.toLowerCase().trim();
     let categoryVal = document.getElementById("categoryFilter").value;
+    let statusFilterEl = document.getElementById("statusFilter");
+    let statusVal = statusFilterEl ? statusFilterEl.value : "All";
     let tbody = document.getElementById("inventoryTableBody");
     let emptyState = document.getElementById("inventoryEmptyState");
 
@@ -83,7 +89,18 @@ function filterAndRenderTable() {
 
         let matchesCat = (categoryVal === "All") || (part.category === categoryVal);
 
-        if (matchesQuery && matchesCat) {
+        let qty = parseInt(part.quantity) || 0;
+        let min = parseInt(part.minStock) || 0;
+        let partStatus = "In Stock";
+        if (qty === 0) {
+            partStatus = "Out of Stock";
+        } else if (qty <= min) {
+            partStatus = "Low Stock";
+        }
+
+        let matchesStatus = (statusVal === "All") || (partStatus === statusVal);
+
+        if (matchesQuery && matchesCat && matchesStatus) {
             filtered.push(part);
         }
     }
@@ -97,32 +114,55 @@ function filterAndRenderTable() {
 
     emptyState.classList.add("d-none");
 
+    let workorders = JSON.parse(localStorage.getItem("iemrs_workorders")) || [];
+
     for (let j = 0; j < filtered.length; j++) {
         let p = filtered[j];
         let tr = document.createElement("tr");
 
-        // Rule: Quantity <= minStock means Low Stock
-        let isLow = parseInt(p.quantity) <= parseInt(p.minStock);
-        let statusText = isLow ? "Low Stock" : "Available";
-        let statusBadgeClass = isLow ? "badge-low-stock" : "badge-available";
+        let qty = parseInt(p.quantity) || 0;
+        let min = parseInt(p.minStock) || 0;
+        let statusText = "In Stock";
+        let statusBadgeClass = "badge-operational";
+        if (qty === 0) {
+            statusText = "Out of Stock";
+            statusBadgeClass = "badge-faulty";
+        } else if (qty <= min) {
+            statusText = "Low Stock";
+            statusBadgeClass = "badge-low-stock";
+        }
+
+        // Check if any work orders are currently waiting for this part
+        let waitingOrders = workorders.filter(o => o.status === "Waiting for Parts" && o.requiredPart === p.name);
+        let waitingTag = "";
+        if (waitingOrders.length > 0) {
+            let totalNeeded = waitingOrders.reduce((sum, o) => sum + (o.requiredQuantity || 1), 0);
+            if (p.quantity >= totalNeeded) {
+                waitingTag = "<br><span class='badge-ready-resume mt-1 d-inline-block'>Parts Restocked: Ready to Resume (" + waitingOrders.length + " WO)</span>";
+            } else {
+                waitingTag = "<br><span class='badge bg-warning text-dark border mt-1 d-inline-block'>⚠️ Needed by " + waitingOrders.length + " Work Order(s)</span>";
+            }
+        }
 
         tr.innerHTML =
-            "<td><strong>" + p.id + "</strong></td>" +
-            "<td>" + p.name + "</td>" +
-            "<td><span class='badge bg-light text-dark border'>" + p.category + "</span></td>" +
-            "<td><strong>" + p.quantity + "</strong> units</td>" +
-            "<td>" + p.minStock + " units</td>" +
-            "<td>" + p.supplier + "</td>" +
+            "<td><strong>" + escapeHTML(p.id) + "</strong></td>" +
+            "<td>" + escapeHTML(p.name) + waitingTag + "</td>" +
+            "<td><span class='badge bg-light text-dark border'>" + escapeHTML(p.category) + "</span></td>" +
+            "<td><strong>" + escapeHTML(p.quantity) + "</strong> units</td>" +
+            "<td>" + escapeHTML(p.minStock) + " units</td>" +
+            "<td>" + escapeHTML(p.supplier) + "</td>" +
             "<td><span class='badge-status " + statusBadgeClass + "'>" + statusText + "</span></td>" +
             "<td class='text-center'>" +
             "  <div class='btn-action-group justify-content-center'>" +
-            "    <button type='button' class='btn-action-edit' onclick='editPart(\"" + p.id + "\")'>Edit</button>" +
-            "    <button type='button' class='btn-action-delete' onclick='deletePart(\"" + p.id + "\")'>Delete</button>" +
+            "    <button type='button' class='btn-action-edit' onclick='editPart(\"" + escapeHTML(p.id) + "\")'>Edit</button>" +
+            "    <button type='button' class='btn-action-delete' onclick='deletePart(\"" + escapeHTML(p.id) + "\")'>Delete</button>" +
             "  </div>" +
             "</td>";
 
         tbody.appendChild(tr);
     }
+
+    applyRolePermissions();
 }
 
 // Reset form
@@ -150,6 +190,9 @@ function handleFormSubmit(event) {
         return;
     }
 
+    let workorders = JSON.parse(localStorage.getItem("iemrs_workorders")) || [];
+    let waitingForThis = workorders.filter(o => o.status === "Waiting for Parts" && o.requiredPart === name);
+
     if (editIndexVal === -1) {
         // Add new
         for (let i = 0; i < inventoryList.length; i++) {
@@ -170,15 +213,25 @@ function handleFormSubmit(event) {
 
         inventoryList.unshift(newPart);
         showAlert("Spare part " + name + " cataloged.", "success");
+        logActivity(name, "Cataloged new spare part (Stock: " + quantity + " units, min: " + minStock + ")", "badge-available");
     } else {
         // Edit existing
         if (editIndexVal >= 0 && editIndexVal < inventoryList.length) {
-            inventoryList[editIndexVal].name = name;
-            inventoryList[editIndexVal].category = category;
-            inventoryList[editIndexVal].quantity = quantity;
-            inventoryList[editIndexVal].minStock = minStock;
-            inventoryList[editIndexVal].supplier = supplier;
-            showAlert("Spare part " + name + " updated.", "success");
+            let oldPart = inventoryList[editIndexVal];
+            let prevQty = oldPart.quantity;
+            oldPart.name = name;
+            oldPart.category = category;
+            oldPart.quantity = quantity;
+            oldPart.minStock = minStock;
+            oldPart.supplier = supplier;
+
+            if (quantity > prevQty && waitingForThis.length > 0) {
+                showAlert("Stock replenished for " + name + ". Work orders waiting on this part can now be resumed manually.", "info");
+                logActivity(name, "Stock replenished to " + quantity + " units (Pending work orders ready to resume)", "badge-available");
+            } else {
+                showAlert("Spare part " + name + " updated.", "success");
+                logActivity(name, "Inventory updated (Stock: " + quantity + " units)", "badge-in-progress");
+            }
         }
     }
 
@@ -221,15 +274,13 @@ function deletePart(id) {
     let confirmed = confirm("Are you sure you want to remove part [" + id + "] from inventory?");
     if (!confirmed) return;
 
-    let newArr = [];
-    for (let i = 0; i < inventoryList.length; i++) {
-        if (inventoryList[i].id !== id) {
-            newArr.push(inventoryList[i]);
-        }
-    }
-
-    inventoryList = newArr;
+    let target = inventoryList.find(p => p.id === id);
+    inventoryList = inventoryList.filter(p => p.id !== id);
     localStorage.setItem("iemrs_inventory", JSON.stringify(inventoryList));
+
+    if (target) {
+        logActivity(target.name, "Spare part " + id + " removed from inventory", "badge-faulty");
+    }
 
     showAlert("Spare part " + id + " removed.", "danger");
     filterAndRenderTable();

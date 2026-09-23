@@ -1,6 +1,6 @@
 // ==========================================================================
-// IEMRS - Workforce JavaScript (js/workforce.js)
-// CRUD, Availability Filtering, and localStorage Persistence (SDG 8)
+// FORGE - Workforce JavaScript (js/workforce.js)
+// Dynamic Active Workload Calculation, Skill Allocation & Availability Tracking
 // ==========================================================================
 
 let workforceList = [];
@@ -37,7 +37,7 @@ function loadWorkforceData() {
     updateKpiCards();
 }
 
-// Update summary metric cards
+// Update summary metric cards with dynamic active workload calculation
 function updateKpiCards() {
     let total = workforceList.length;
     let available = 0;
@@ -45,10 +45,16 @@ function updateKpiCards() {
     let unavailable = 0;
 
     for (let i = 0; i < workforceList.length; i++) {
-        let av = workforceList[i].availability;
-        if (av === "Available") available++;
-        else if (av === "Busy") busy++;
-        else if (av === "Unavailable") unavailable++;
+        let t = workforceList[i];
+        let activeOrders = calculateActiveWorkload(t.name);
+
+        if (t.availability === "Unavailable" || t.availability === "On Leave") {
+            unavailable++;
+        } else if (activeOrders > 0) {
+            busy++;
+        } else {
+            available++;
+        }
     }
 
     document.getElementById("kpiTotalTechs").textContent = total;
@@ -76,7 +82,12 @@ function filterAndRenderTable() {
             tech.skill.toLowerCase().includes(query) ||
             tech.certification.toLowerCase().includes(query);
 
-        let matchesAvail = (availVal === "All") || (tech.availability === availVal);
+        let activeOrders = calculateActiveWorkload(tech.name);
+        let dynamicAvail = (tech.availability === "Unavailable" || tech.availability === "On Leave")
+            ? "On Leave"
+            : (activeOrders > 0 ? "Busy" : "Available");
+
+        let matchesAvail = (availVal === "All") || (dynamicAvail === availVal) || (tech.availability === availVal);
 
         if (matchesQuery && matchesAvail) {
             filtered.push(tech);
@@ -96,26 +107,46 @@ function filterAndRenderTable() {
         let t = filtered[j];
         let tr = document.createElement("tr");
 
+        let activeOrders = calculateActiveWorkload(t.name);
+        let dynamicAvail = (t.availability === "Unavailable" || t.availability === "On Leave")
+            ? "On Leave"
+            : (activeOrders > 0 ? "Busy" : "Available");
+
         let availBadgeClass = "badge-available";
-        if (t.availability === "Busy") availBadgeClass = "badge-busy";
-        else if (t.availability === "Unavailable") availBadgeClass = "badge-unavailable";
+        if (dynamicAvail === "Busy") availBadgeClass = "badge-busy";
+        else if (dynamicAvail === "On Leave") availBadgeClass = "badge-unavailable";
+
+        // Workload indicator
+        let workloadHtml = "";
+        if (dynamicAvail === "On Leave") {
+            workloadHtml = "<span class='text-muted small'>On Leave</span>";
+        } else if (activeOrders === 0) {
+            workloadHtml = "<span class='badge-status badge-operational'>Low (0/3)</span>";
+        } else if (activeOrders === 1) {
+            workloadHtml = "<span class='badge-status badge-in-progress'>Medium (1/3)</span>";
+        } else {
+            workloadHtml = "<span class='badge-status badge-waiting'>High (" + activeOrders + "/3)</span>";
+        }
 
         tr.innerHTML =
-            "<td><strong>" + t.id + "</strong></td>" +
-            "<td>" + t.name + "</td>" +
-            "<td>" + t.skill + "</td>" +
-            "<td><small class='text-muted'>" + t.certification + "</small></td>" +
-            "<td><span class='badge-status " + availBadgeClass + "'>" + t.availability + "</span></td>" +
-            "<td>" + t.workload + "</td>" +
+            "<td><strong>" + escapeHTML(t.id) + "</strong></td>" +
+            "<td>" + escapeHTML(t.name) + "</td>" +
+            "<td>" + escapeHTML(t.skill) + "</td>" +
+            "<td><small class='text-muted'>" + escapeHTML(t.certification) + "</small></td>" +
+            "<td><span class='badge-status " + availBadgeClass + "'>" + escapeHTML(dynamicAvail) + "</span></td>" +
+            "<td><strong>" + activeOrders + "</strong></td>" +
+            "<td>" + workloadHtml + "</td>" +
             "<td class='text-center'>" +
             "  <div class='btn-action-group justify-content-center'>" +
-            "    <button type='button' class='btn-action-edit' onclick='editTechnician(\"" + t.id + "\")'>Edit</button>" +
-            "    <button type='button' class='btn-action-delete' onclick='deleteTechnician(\"" + t.id + "\")'>Delete</button>" +
+            "    <button type='button' class='btn-action-edit' onclick='editTechnician(\"" + escapeHTML(t.id) + "\")'>Edit</button>" +
+            "    <button type='button' class='btn-action-delete' onclick='deleteTechnician(\"" + escapeHTML(t.id) + "\")'>Delete</button>" +
             "  </div>" +
             "</td>";
 
         tbody.appendChild(tr);
     }
+
+    applyRolePermissions();
 }
 
 // Reset form
@@ -136,10 +167,10 @@ function handleFormSubmit(event) {
     let skill = document.getElementById("techSkill").value.trim();
     let certification = document.getElementById("techCert").value.trim();
     let availability = document.getElementById("techAvailability").value;
-    let workload = document.getElementById("techWorkload").value.trim();
+    let workloadNote = document.getElementById("techWorkload").value.trim() || "Active Personnel";
 
-    if (!id || !name || !skill || !certification || !availability || !workload) {
-        showAlert("Please fill in all fields.", "danger");
+    if (!id || !name || !skill || !certification || !availability) {
+        showAlert("Please fill in all required fields.", "danger");
         return;
     }
 
@@ -158,11 +189,12 @@ function handleFormSubmit(event) {
             skill: skill,
             certification: certification,
             availability: availability,
-            workload: workload
+            workload: workloadNote
         };
 
         workforceList.unshift(newTech);
         showAlert("Technician " + name + " registered.", "success");
+        logActivity(name, "New technician registered (" + skill + ")", "badge-available");
     } else {
         // Edit existing
         if (editIndexVal >= 0 && editIndexVal < workforceList.length) {
@@ -170,8 +202,9 @@ function handleFormSubmit(event) {
             workforceList[editIndexVal].skill = skill;
             workforceList[editIndexVal].certification = certification;
             workforceList[editIndexVal].availability = availability;
-            workforceList[editIndexVal].workload = workload;
+            workforceList[editIndexVal].workload = workloadNote;
             showAlert("Technician " + name + " profile updated.", "success");
+            logActivity(name, "Technician profile updated (Availability: " + availability + ")", "badge-in-progress");
         }
     }
 
@@ -203,7 +236,7 @@ function editTechnician(id) {
     document.getElementById("techSkill").value = t.skill;
     document.getElementById("techCert").value = t.certification;
     document.getElementById("techAvailability").value = t.availability;
-    document.getElementById("techWorkload").value = t.workload;
+    document.getElementById("techWorkload").value = t.workload || "";
 
     document.getElementById("techModalLabel").textContent = "Edit Technician (" + t.id + ")";
     workforceModalInstance.show();
@@ -214,15 +247,13 @@ function deleteTechnician(id) {
     let confirmed = confirm("Are you sure you want to remove technician [" + id + "] from roster?");
     if (!confirmed) return;
 
-    let newArr = [];
-    for (let i = 0; i < workforceList.length; i++) {
-        if (workforceList[i].id !== id) {
-            newArr.push(workforceList[i]);
-        }
-    }
-
-    workforceList = newArr;
+    let target = workforceList.find(t => t.id === id);
+    workforceList = workforceList.filter(t => t.id !== id);
     localStorage.setItem("iemrs_workforce", JSON.stringify(workforceList));
+
+    if (target) {
+        logActivity(target.name, "Technician " + id + " removed from roster", "badge-faulty");
+    }
 
     showAlert("Technician " + id + " removed.", "danger");
     filterAndRenderTable();

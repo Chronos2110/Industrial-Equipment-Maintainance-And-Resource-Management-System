@@ -1,5 +1,5 @@
 // ==========================================================================
-// IEMRS - Analytics & Reporting JavaScript (js/analytics.js)
+// FORGE - Analytics & Reporting JavaScript (js/analytics.js)
 // Dynamically calculates statistics, equipment health & resource consumption
 // ==========================================================================
 
@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
     calculateMaintenanceEfficiency();
     renderResourceUsageTable();
     renderRecentActivities();
+    applyRolePermissions();
 });
 
 // 1. Calculate Summary Cards
@@ -30,10 +31,11 @@ function calculateSummaryCards() {
     }
     document.getElementById("analyticMaintDone").textContent = completedMaint;
 
-    // Open Work Orders
+    // Open Work Orders (not Completed or Cancelled)
     let openOrders = 0;
     for (let j = 0; j < workorders.length; j++) {
-        if (workorders[j].status !== "Completed") {
+        let st = workorders[j].status;
+        if (st !== "Completed" && st !== "Cancelled") {
             openOrders++;
         }
     }
@@ -98,8 +100,8 @@ function calculateMaintenanceEfficiency() {
     for (let i = 0; i < maintenance.length; i++) {
         let st = maintenance[i].status;
         if (st === "Completed") completed++;
-        else if (st === "In Progress") inProgress++;
-        else if (st === "Scheduled") scheduled++;
+        else if (st === "In Progress" || st === "Waiting for Parts") inProgress++;
+        else if (st === "Scheduled" || st === "Assigned") scheduled++;
     }
 
     let compPct = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -145,10 +147,10 @@ function renderResourceUsageTable() {
         }
 
         tr.innerHTML =
-            "<td><strong>" + item.name + "</strong></td>" +
-            "<td><span class='badge bg-light text-dark border'>" + item.category + "</span></td>" +
-            "<td>" + item.quantity + " units</td>" +
-            "<td>" + item.minStock + " units</td>" +
+            "<td><strong>" + escapeHTML(item.name) + "</strong></td>" +
+            "<td><span class='badge bg-light text-dark border'>" + escapeHTML(item.category) + "</span></td>" +
+            "<td>" + escapeHTML(item.quantity) + " units</td>" +
+            "<td>" + escapeHTML(item.minStock) + " units</td>" +
             "<td>" + statusBadge + "</td>";
 
         tbody.appendChild(tr);
@@ -167,9 +169,9 @@ function renderRecentActivities() {
         let tr = document.createElement("tr");
 
         tr.innerHTML =
-            "<td><small class='text-muted'>" + act.time + "</small></td>" +
-            "<td><strong>" + act.item + "</strong></td>" +
-            "<td>" + act.activity + "</td>";
+            "<td><small class='text-muted'>" + escapeHTML(act.time) + "</small></td>" +
+            "<td><strong>" + escapeHTML(act.item) + "</strong></td>" +
+            "<td>" + escapeHTML(act.activity) + "</td>";
 
         tbody.appendChild(tr);
     }

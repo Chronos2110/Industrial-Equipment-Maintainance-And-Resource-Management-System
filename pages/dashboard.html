@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IEMRS - Industrial Control Dashboard</title>
+    <title>FORGE - Industrial Operations Dashboard</title>
 
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -19,365 +19,220 @@
 
         <!-- Unified Sidebar Navigation -->
         <div class="sidebar">
-
             <div class="sidebar-brand">
-                <h2>IEMRS</h2>
-                <span class="brand-sub">Control Center</span>
+                <h2>FORGE</h2>
+                <span class="brand-sub">Industrial Maintenance</span>
             </div>
 
             <div class="sidebar-nav">
+                <div class="nav-section-label">Overview</div>
                 <a href="dashboard.html" class="active">Dashboard</a>
+
+                <div class="nav-section-label">Operations</div>
                 <a href="equipment.html">Equipment</a>
                 <a href="maintenance.html">Maintenance</a>
                 <a href="workorders.html">Work Orders</a>
+
+                <div class="nav-section-label">Resources</div>
                 <a href="workforce.html">Workforce</a>
                 <a href="inventory.html">Inventory</a>
+
+                <div class="nav-section-label">Insights</div>
                 <a href="analytics.html">Analytics</a>
             </div>
 
             <div class="sidebar-footer">
                 <a href="../index.html" class="logout" id="logoutBtn">Logout</a>
             </div>
-
         </div>
-
 
         <!-- Main Content Area -->
         <div class="main-content">
 
             <!-- Consistent Topbar -->
             <div class="topbar">
-
                 <div class="topbar-left">
-
-                    <h3>Operational Dashboard</h3>
-
-                    <p class="topbar-subtitle">
-                        Real-time industrial asset health & plant monitoring
-                    </p>
-
+                    <h3>Dashboard</h3>
+                    <p class="topbar-subtitle">Industrial Equipment Maintenance & Resource Management</p>
                 </div>
-
                 <div class="topbar-right">
-
                     <span class="role-badge">
-
                         <span class="status-indicator-dot"></span>
-
-                        <span class="topbar-role">
-                            Administrator
-                        </span>
-
+                        <span class="topbar-role">Administrator</span>
                     </span>
-
                 </div>
-
             </div>
-
 
             <!-- Page Body -->
             <div class="page-container">
 
-
-                <!-- Control Center Welcome & Quick Actions -->
-                <div class="control-banner">
-
-                    <div>
-
-                        <h4>Plant Control Overview</h4>
-
-                        <p>
-                            Monitoring active machinery, preventive schedules,
-                            and warehouse inventory levels.
-                        </p>
-
+                <!-- Equipment Overview Section -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="mb-0 fw-bold" style="color:var(--text-primary); font-size:1.05rem; letter-spacing:0.2px;">Equipment Overview</h4>
+                    <div class="d-flex gap-2">
+                        <a href="equipment.html" class="btn btn-sm btn-outline-primary fw-semibold">View Registry</a>
+                        <a href="workorders.html" class="btn btn-sm btn-primary fw-semibold">+ Create Work Order</a>
                     </div>
-
-                    <div class="d-flex gap-2 flex-wrap mt-2 mt-md-0">
-
-                        <a
-                            href="equipment.html"
-                            class="btn btn-sm btn-light font-weight-bold">
-
-                            Manage Equipment
-
-                        </a>
-
-                        <a
-                            href="workorders.html"
-                            class="btn btn-sm btn-primary">
-
-                            Create Work Order
-
-                        </a>
-
-                    </div>
-
                 </div>
 
-
-                <!-- KPI Overview Cards -->
+                <!-- Primary 4 KPI Overview Cards -->
                 <div class="row g-3 mb-4">
-
                     <div class="col-xl-3 col-sm-6">
-
                         <div class="dashboard-card card-blue">
-
                             <h5>Total Equipment</h5>
-
                             <h2 id="totalEquipment">0</h2>
-
-                            <span class="card-hint">
-                                All registered plant assets
-                            </span>
-
+                            <span class="card-hint">All registered plant machinery</span>
                         </div>
-
                     </div>
 
-
                     <div class="col-xl-3 col-sm-6">
-
                         <div class="dashboard-card card-green">
-
                             <h5>Operational</h5>
-
                             <h2 id="operationalEquipment">0</h2>
-
-                            <span class="card-hint text-success">
-                                Running at normal parameters
-                            </span>
-
+                            <span class="card-hint text-success">Running at normal parameters</span>
                         </div>
-
                     </div>
 
-
                     <div class="col-xl-3 col-sm-6">
-
                         <div class="dashboard-card card-amber">
-
                             <h5>Under Maintenance</h5>
-
                             <h2 id="maintenanceEquipment">0</h2>
-
-                            <span class="card-hint text-warning">
-                                Scheduled or in repair
-                            </span>
-
+                            <span class="card-hint text-warning">Scheduled or under service</span>
                         </div>
-
                     </div>
-
 
                     <div class="col-xl-3 col-sm-6">
-
                         <div class="dashboard-card card-red">
-
-                            <h5>Open Work Orders</h5>
-
-                            <h2 id="openOrders">0</h2>
-
-                            <span class="card-hint text-danger">
-                                Pending technician action
-                            </span>
-
+                            <h5>Faulty</h5>
+                            <h2 id="faultyEquipment">0</h2>
+                            <span class="card-hint text-danger">Requires immediate service</span>
                         </div>
-
                     </div>
-
                 </div>
 
-
-                <!-- Main Grid: Upcoming Maintenance & Inventory Alerts -->
-                <div class="row g-4">
-
-
-                    <!-- Upcoming Maintenance Section -->
-                    <div class="col-lg-7">
-
-                        <div class="dashboard-section h-100">
-
-                            <div class="section-header">
-
-                                <h4>Upcoming Maintenance</h4>
-
-                                <a
-                                    href="maintenance.html"
-                                    class="btn btn-sm btn-outline-primary">
-
-                                    View Schedule
-
-                                </a>
-
-                            </div>
-
-
-                            <div class="table-responsive">
-
-                                <table class="table">
-
-                                    <thead>
-
-                                        <tr>
-
-                                            <th>Equipment</th>
-
-                                            <th>Date</th>
-
-                                            <th>Type</th>
-
-                                            <th>Status</th>
-
-                                        </tr>
-
-                                    </thead>
-
-
-                                    <tbody id="upcomingMaintenanceBody">
-
-                                        <!-- Populated dynamically by dashboard.js -->
-
-                                    </tbody>
-
-                                </table>
-
-                            </div>
-
-
-                            <div
-                                id="maintenanceEmptyState"
-                                class="empty-state d-none">
-
-                                <div class="empty-state-icon">
-                                    📋
-                                </div>
-
-                                <h5>
-                                    No Upcoming Maintenance
-                                </h5>
-
-                                <p>
-                                    All preventive maintenance tasks are completed.
-                                </p>
-
-                            </div>
-
-                        </div>
-
+                <!-- Upcoming Maintenance Section -->
+                <div class="dashboard-section mb-4">
+                    <div class="section-header">
+                        <h4>Upcoming Maintenance</h4>
+                        <a href="maintenance.html" class="btn btn-sm btn-outline-primary">View Full Schedule</a>
                     </div>
 
-
-                    <!-- Inventory Alerts Section -->
-                    <div class="col-lg-5">
-
-                        <div class="dashboard-section h-100">
-
-                            <div class="section-header">
-
-                                <h4>
-                                    Inventory Alerts (Low Stock)
-                                </h4>
-
-                                <a
-                                    href="inventory.html"
-                                    class="btn btn-sm btn-outline-danger">
-
-                                    Manage Stock
-
-                                </a>
-
-                            </div>
-
-
-                            <div id="inventoryAlertsList">
-
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Equipment</th>
+                                    <th>Maintenance Type</th>
+                                    <th>Technician</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="upcomingMaintenanceBody">
                                 <!-- Populated dynamically by dashboard.js -->
-
-                            </div>
-
-
-                            <div
-                                id="inventoryEmptyState"
-                                class="empty-state d-none">
-
-                                <div class="empty-state-icon">
-                                    📦
-                                </div>
-
-                                <h5>
-                                    Inventory Healthy
-                                </h5>
-
-                                <p>
-                                    All spare parts are above minimum stock thresholds.
-                                </p>
-
-                            </div>
-
-                        </div>
-
+                            </tbody>
+                        </table>
                     </div>
 
+                    <div id="maintenanceEmptyState" class="empty-state d-none">
+                        <div class="empty-state-icon">📋</div>
+                        <h5>No Upcoming Maintenance</h5>
+                        <p>All preventive maintenance tasks are currently up to date.</p>
+                    </div>
                 </div>
 
-
-                <!-- Bottom Row: Recent Activities -->
-                <div class="row g-4 mt-1">
-
-
-                    <div class="col-lg-8">
-
-                        <div class="dashboard-section">
-
-                            <div class="section-header">
-
-                                <h4>
-                                    Recent System Activity
-                                </h4>
-
-                                <span class="badge bg-secondary">
-                                    Live Audit Log
-                                </span>
-
-                            </div>
-
-
-                            <div class="table-responsive">
-
-                                <table class="table">
-
-                                    <thead>
-
-                                        <tr>
-
-                                            <th>Time</th>
-
-                                            <th>Asset / Part</th>
-
-                                            <th>Activity Description</th>
-
-                                            <th>Recorded By</th>
-
-                                        </tr>
-
-                                    </thead>
-
-
-                                    <tbody id="recentActivityBody">
-
-                                        <!-- Populated dynamically by dashboard.js -->
-
-                                    </tbody>
-
-                                </table>
-
-                            </div>
-
-                        </div>
-
+                <!-- Open Work Orders Section -->
+                <div class="dashboard-section mb-4">
+                    <div class="section-header">
+                        <h4>Open Work Orders</h4>
+                        <a href="workorders.html" class="btn btn-sm btn-outline-primary">View All Work Orders</a>
                     </div>
 
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>WO ID</th>
+                                    <th>Equipment</th>
+                                    <th>Priority</th>
+                                    <th>Assigned To</th>
+                                    <th>Status</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="openWorkOrdersBody">
+                                <!-- Populated dynamically by dashboard.js -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="workOrdersEmptyState" class="empty-state d-none">
+                        <div class="empty-state-icon">✅</div>
+                        <h5>No Open Work Orders</h5>
+                        <p>All work orders have been resolved or closed.</p>
+                    </div>
+                </div>
+
+                <!-- Two-Column Grid: Inventory Alerts & Recent Activity -->
+                <div class="row g-4 mb-4">
+
+                    <!-- Left: Inventory Alerts -->
+                    <div class="col-lg-6">
+                        <div class="dashboard-section h-100">
+                            <div class="section-header">
+                                <h4>Inventory Alerts</h4>
+                                <a href="inventory.html" class="btn btn-sm btn-outline-danger">Manage Stock</a>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Part</th>
+                                            <th>Current Stock</th>
+                                            <th>Minimum Stock</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="inventoryAlertsBody">
+                                        <!-- Populated dynamically by dashboard.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div id="inventoryEmptyState" class="empty-state d-none">
+                                <div class="empty-state-icon">📦</div>
+                                <h5>Inventory Healthy</h5>
+                                <p>All critical spare parts are above safety stock thresholds.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Recent Activity List -->
+                    <div class="col-lg-6">
+                        <div class="dashboard-section h-100">
+                            <div class="section-header">
+                                <h4>Recent Activity</h4>
+                                <span class="badge bg-secondary">System Audit</span>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Asset / Part</th>
+                                            <th>Activity Description</th>
+                                            <th>Recorded By</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="recentActivityBody">
+                                        <!-- Populated dynamically by dashboard.js -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
 
                 </div>
 
@@ -387,13 +242,10 @@
 
     </div>
 
-
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
     <!-- Shared Common Script -->
     <script src="../js/common.js"></script>
-
     <!-- Page Specific Script -->
     <script src="../js/dashboard.js"></script>
 

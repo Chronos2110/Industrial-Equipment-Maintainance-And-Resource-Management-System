@@ -1,5 +1,5 @@
 // ==========================================================================
-// IEMRS - Login JavaScript (js/app.js)
+// FORGE - Login JavaScript (js/app.js)
 // Simple, direct validation suitable for college lab viva explanation
 // ==========================================================================
 
@@ -16,13 +16,13 @@ loginForm.addEventListener("submit", function (event) {
     // Validation
     if (username === "" || password === "" || role === "") {
         message.innerHTML = "Please enter username, password, and select a role.";
-        message.style.color = "#dc2626";
+        message.style.color = "#e74c3c";
         return;
     }
 
     // Successful login simulation
-    message.innerHTML = "Authorization confirmed. Redirecting to control center...";
-    message.style.color = "#16a34a";
+    message.innerHTML = "Login successful. Redirecting to dashboard...";
+    message.style.color = "#27ae60";
 
     // Save selected role in sessionStorage for dashboard and topbars
     sessionStorage.setItem("iemrs_role", role);
@@ -30,5 +30,5 @@ loginForm.addEventListener("submit", function (event) {
     // Redirect to dashboard
     setTimeout(function () {
         window.location.href = "pages/dashboard.html";
-    }, 600);
+    }, 500);
 });

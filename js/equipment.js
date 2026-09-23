@@ -1,5 +1,5 @@
 // ==========================================================================
-// IEMRS - Equipment Management JavaScript (js/equipment.js)
+// FORGE - Equipment Management JavaScript (js/equipment.js)
 // Simple CRUD, Search, Status Filter & localStorage Persistence
 // ==========================================================================
 
@@ -109,22 +109,24 @@ function filterAndRenderTable() {
         }
 
         tr.innerHTML =
-            "<td><strong>" + eq.id + "</strong></td>" +
-            "<td>" + eq.name + "</td>" +
-            "<td>" + eq.type + "</td>" +
-            "<td>" + eq.location + "</td>" +
-            "<td><span class='badge-status " + badgeClass + "'>" + eq.status + "</span></td>" +
-            "<td>" + eq.lastMaintenance + "</td>" +
-            "<td>" + eq.nextMaintenance + "</td>" +
+            "<td><strong>" + escapeHTML(eq.id) + "</strong></td>" +
+            "<td>" + escapeHTML(eq.name) + "</td>" +
+            "<td>" + escapeHTML(eq.type) + "</td>" +
+            "<td>" + escapeHTML(eq.location) + "</td>" +
+            "<td><span class='badge-status " + badgeClass + "'>" + escapeHTML(eq.status) + "</span></td>" +
+            "<td>" + escapeHTML(eq.lastMaintenance) + "</td>" +
+            "<td>" + escapeHTML(eq.nextMaintenance) + "</td>" +
             "<td class='text-center'>" +
             "  <div class='btn-action-group justify-content-center'>" +
-            "    <button type='button' class='btn-action-edit' onclick='editEquipment(\"" + eq.id + "\")'>Edit</button>" +
-            "    <button type='button' class='btn-action-delete' onclick='deleteEquipment(\"" + eq.id + "\")'>Delete</button>" +
+            "    <button type='button' class='btn-action-edit' onclick='editEquipment(\"" + escapeHTML(eq.id) + "\")'>Edit</button>" +
+            "    <button type='button' class='btn-action-delete' onclick='deleteEquipment(\"" + escapeHTML(eq.id) + "\")'>Delete</button>" +
             "  </div>" +
             "</td>";
 
         tbody.appendChild(tr);
     }
+
+    applyRolePermissions();
 }
 
 // Reset form for new equipment
@@ -174,6 +176,7 @@ function handleFormSubmit(event) {
 
         equipmentList.unshift(newEquipment);
         showAlert("Equipment " + id + " registered successfully.", "success");
+        logActivity(name, "New equipment " + id + " registered (" + type + ", " + location + ")", "badge-operational");
     } else {
         // Editing existing record
         if (editIndexVal >= 0 && editIndexVal < equipmentList.length) {
@@ -184,6 +187,7 @@ function handleFormSubmit(event) {
             equipmentList[editIndexVal].lastMaintenance = lastMaint;
             equipmentList[editIndexVal].nextMaintenance = nextMaint;
             showAlert("Equipment " + id + " updated successfully.", "success");
+            logActivity(name, "Equipment " + id + " details updated (Status: " + status + ")", status === "Maintenance" ? "badge-maintenance" : "badge-operational");
         }
     }
 
@@ -229,15 +233,13 @@ function deleteEquipment(id) {
     let confirmed = confirm("Are you sure you want to delete equipment [" + id + "] from registry?");
     if (!confirmed) return;
 
-    let newArr = [];
-    for (let i = 0; i < equipmentList.length; i++) {
-        if (equipmentList[i].id !== id) {
-            newArr.push(equipmentList[i]);
-        }
-    }
-
-    equipmentList = newArr;
+    let target = equipmentList.find(e => e.id === id);
+    equipmentList = equipmentList.filter(e => e.id !== id);
     localStorage.setItem("iemrs_equipment", JSON.stringify(equipmentList));
+
+    if (target) {
+        logActivity(target.name, "Equipment " + id + " removed from plant registry", "badge-faulty");
+    }
 
     showAlert("Equipment " + id + " deleted from registry.", "danger");
     filterAndRenderTable();
